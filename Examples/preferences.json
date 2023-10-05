@@ -1,0 +1,6 @@
+{
+	"org": "Chime",
+	"dialog": "/opt/chime/bin/dialog",
+	"icon": "/opt/chime/images/chime-it.png",
+	"processes": ["Falcon", "code42", "osquery"]
+}
