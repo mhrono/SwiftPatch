@@ -32,9 +32,9 @@ Updates selected for installation will be shown in a new list, with live progres
 
 ## Example Screenshots
 
-<img width="932" alt="prompt" src="https://github.com/mhrono/SwiftPatch/assets/37225540/ebeb3af6-8b6b-4d21-ae30-ad87cb4b4457">
-<img width="932" alt="progress" src="https://github.com/mhrono/SwiftPatch/assets/37225540/59d6a7cc-cac7-49ff-8667-36cef42bd631">
-<img width="932" alt="complete" src="https://github.com/mhrono/SwiftPatch/assets/37225540/9fb10d78-cf71-4e7b-827c-86c63323ac96">
+<img width="932" alt="prompt" src="https://github.com/mhrono/SwiftPatch/assets/37225540/c5a3bbf9-d195-4b8e-b83e-3f3ccbac4ca1">
+<img width="932" alt="progress" src="https://github.com/mhrono/SwiftPatch/assets/37225540/5fc20847-0279-4cad-ab83-33f355ce85a1">
+<img width="932" alt="complete" src="https://github.com/mhrono/SwiftPatch/assets/37225540/e0dd92de-c01e-4a0e-91b4-c8437ca04145">
 
 ## Getting Started
 In lieu of a full wiki, here's how to start testing this script:
