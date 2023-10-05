@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>bundleID</key>
+    <string>com.1password.1password</string>
+    <key>deferLimit</key>
+    <string>10</string>
+    <key>displayName</key>
+    <string>1Password</string>
+    <key>forceUpdate</key>
+    <string>false</string>
+    <key>pkgSize</key>
+    <integer>248288139</integer>
+    <key>rollbackVersion</key>
+    <string>False</string>
+    <key>targetVersionRegex</key>
+    <string>^(\d{2,}.*|9.*|8\.\d{3,}.*|8\.[2-9]\d{1,}.*|8\.1[1-9].*|8\.10\.\d{3,}.*|8\.10\.[2-9]\d{1,}.*|8\.10\.1[7-9].*|8\.10\.16.*)$</string>
+    <key>targetVersionRegex2</key>
+    <string>^$</string>
+    <key>targetVersionRegex3</key>
+    <string>^$</string>
+    <key>targetVersionString</key>
+    <string>8.10.16</string>
+    <key>versionKey</key>
+    <string>CFBundleShortVersionString</string>
+  </dict>
+</plist>
