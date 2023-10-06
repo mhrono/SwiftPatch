@@ -1,11 +1,12 @@
 #!/bin/zsh
 
-#### INSERT ORG NAME HERE ####
-org=""
-
 ## Get the installed version of the swiftDialog based app update framework
-scriptPath="/opt/$org/tools/appUpdates.py"
-pythonPath="/opt/$org/bin/python3"
+
+#### Insert the path to the update script on-device
+scriptPath=""
+
+## Set to the path of your python3 executable
+pythonPath="/usr/bin/env python3"
 
 if [[ $pythonPath ]] && [[ $scriptPath ]]; then
 	version="$($pythonPath $scriptPath --version)"
