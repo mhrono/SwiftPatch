@@ -4,7 +4,7 @@ Keep apps up to date--swiftly and transparently!
 ## Overview
 First, a full wiki with screenshots, customization options, and usage examples will be coming soon! I've been excited to get this project published, so I've opted to release the code first and document second.
 
-I've been a fan of AutoPkg for a long time, and paired with Jamf-Upload (previously JSSUploader), getting apps imported to jamf has been a breeze.
+I've been a fan of AutoPkg for a long time, and paired with Jamf-Upload (previously JSSImporter), getting apps imported to jamf has been a breeze.
 What about keeping end user devices up to date with these apps? Well, that's been more of a headache. A number of solutions have been developed, but I wanted something that is:
 - Friendly with a native-looking interface
 - Transparent to users both before and during the update process
