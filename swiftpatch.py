@@ -1641,9 +1641,9 @@ def run():
 	for appItem in dialogProgressList['listItem']:
 		updateDialog(f'listitem: add, title: {appItem["title"]}, icon: {appItem["icon"]}, status: {appItem["status"]}, statustext: {appItem["statustext"]}')
 
-	runRecon()
-
 	writeRunReceipt()
+
+	runRecon()
 
 	updateDialog('quit:')
 	logging.info('Run completed.')
