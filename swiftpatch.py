@@ -68,7 +68,7 @@ Use SwiftDialog to prompt users to update their apps
 Version rollback functionality is not yet implemented. Some of the bits are already written, but no testing has been done and rollbacks are not expected to work.
 """
 
-scriptVersion = '1.0'
+scriptVersion = '1.0.1'
 requiredDialogVersionString = '2.3.0'
 requiredDialogPattern = '^(\d{2,}.*|[3-9].*|2\.\d{2,}.*|2\.[4-9].*|2\.3\.\d{2,}.*|2\.3\.[1-9].*|2\.3\.0.*)$'
 requiredPythonVersionString = '3.10'
@@ -90,6 +90,9 @@ Adjust pkgName variable assignment in monitorPolicyRun to account for HTML-encod
 
 ---- 1.0 | 2023-10-05 ----
 First public release!
+
+---- 1.0.1 | 2023-10-13 ----
+Move run receipt update above inventory update in cleanup
 """
 
 ##########################
