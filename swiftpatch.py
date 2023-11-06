@@ -68,7 +68,7 @@ Use SwiftDialog to prompt users to update their apps
 Version rollback functionality is not yet implemented. Some of the bits are already written, but no testing has been done and rollbacks are not expected to work.
 """
 
-scriptVersion = '1.0.1'
+scriptVersion = '1.1.0'
 requiredDialogVersionString = '2.3.0'
 requiredDialogPattern = '^(\d{2,}.*|[3-9].*|2\.\d{2,}.*|2\.[4-9].*|2\.3\.\d{2,}.*|2\.3\.[1-9].*|2\.3\.0.*)$'
 requiredPythonVersionString = '3.10'
@@ -93,6 +93,54 @@ First public release!
 
 ---- 1.0.1 | 2023-10-13 ----
 Move run receipt update above inventory update in cleanup
+
+---- 1.0.2 | 2023-10-18 ----
+Remove unneeded warning logging for silent status update attempts
+Fix path presence checking in getBinaryVersion
+Added some error handling to getBinaryVersion
+Fixed force tagging logic for silent updates
+
+---- 1.0.3 | 2023-10-23 ----
+Added step to unload existing LaunchDaemons before loading new ones
+Changed run time in receipt to use UTC instead of device local time
+Added RunAtLoad to setup LaunchDaemons
+
+---- 1.0.4 | 2023-10-24 ----
+Fixed issue with last run receipt checking
+
+---- 1.1.0 | 2023-11-06 ----
+POTENTIALLY BREAKING CHANGES
+----------------------------
+Setting preferences via configuration profile is now possible using the com.github.swiftpatch domain
+Any NEW preference keys will be available via configuration profile, URL, or json file ONLY, with the exception of the new --selfservice option
+NO additional command-line arguments will be added to support additional keys
+All options are supported, and command-line arguments will continue to take precedence over other methods
+For a list of available command-line arguments, run this script with --help
+----------------------------
+Now, on to the changes:
+Updated description for --saveprefs argument to remind that configuration profiles take precedence
+Added --selfservice argument to enable an ultralight single-app update interface
+Added endRun function to consolidate script exit points and ensure consistency
+Added support for preferences set by configuration profile
+Added `simple` option to remove the info box, icon, and instructions, creating a smaller and cleaner prompt interface
+Added `speedtest` option to enable or disable the download speed test (defaults to True, unless `simple` is True)
+Added `position` option to configure where on the user's screen the prompt is generated
+Added `speechBalloon` emoji
+Added check for existing dialog processes before continuing a run to avoid a potential race condition
+Updated `updateStatus` function to handle updates to `selfservice` runs
+Updated retrieval method for `systemUptimeDays` in `getDeviceHealth` to include time spent sleeping
+Fixed copy in infobox uptime field to remove use the singular `day` if `systemUptimeDays == 1`
+Fixed an issue in `setDeferral` by adding an item to `deferralIndexMap` to better handle randomized deferrals
+Updated method for gathering installed update metadata profiles to enable case-insensitivity (and avoid potential issues when using `--selfservice`)
+Fixed version metadata being unintentionally included in `dialogPromptList`
+Added status overlay icons to dialog updates for a slightly richer UX
+Updated time between download progress checks from 0.5 > 0.1 seconds, also for a slightly richer UX
+Updated some copy and buttom labeling for both the prompt and status dialogs when using the default interface
+Added copy and dialog parameters to prompt and status dialogs to support new simple interface
+Fixed typo in `parseUserSelections` function name
+Added logic in `run` to process `selfservice` executions
+Fixed lazy deferral checking in `parseUserSelections` to only check app keys in `promptOutput`
+Other minor fixes throughout
 """
 
 ##########################
@@ -115,7 +163,6 @@ import urllib.parse
 from AppKit import NSWorkspace
 from Cocoa import NSRunningApplication
 from datetime import datetime
-from Foundation import NSProcessInfo
 from pathlib import Path
 from shutil import disk_usage
 from tempfile import NamedTemporaryFile
@@ -130,13 +177,14 @@ from tempfile import NamedTemporaryFile
 parser = argparse.ArgumentParser(description='Control the behavior of this script', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--silent', action=argparse.BooleanOptionalAction, default=True, help='Determines whether or not the script runs silently or generates a prompt')
 parser.add_argument('--defer', action=argparse.BooleanOptionalAction, default=False, help='Identifies this run as triggered by a deferral. Useful for testing only, as the run timing will always evaluate as valid.')
+parser.add_argument('--selfservice', default='', nargs=1, help='Enables an ultralight interface for updating a single app, generally from a Self Service item. Accepts a single argument for the display name of the app to be updated. This name must match the app\'s associated metadata configuration profile.')
 parser.add_argument('--org', default='org', nargs='?', help='Name of your org, used to create deferral and data directories')
 parser.add_argument('-d', '--dialog', default=Path('/usr/local/bin/dialog'), nargs='?', type=Path, help='Full path to the dialog binary, if somewhere other than /usr/local/bin/dialog')
 parser.add_argument('-i', '--icon', default=Path('/System/Library/CoreServices/Installer.app'), nargs='?', type=Path, help='Full path to an icon for your org/team/etc. Placed at the top of the prompt infobox.')
 parser.add_argument('--processes', nargs='+', help='Space-separated list of process names to check if running. Determines the status of \"Security Systems\" in the prompt sidebar.')
 parser.add_argument('-v', '--verbose', action='count', default=0, help='Enable debug logging')
 parser.add_argument('--prefsfile', default=None, help='Full path or URL to a json file to set any/all options. Keys are identical to command-line long-form option flags (example: \'path\' for a custom dialog binary path). Preferences set on the command line will take precedence over any found in a json file.')
-parser.add_argument('--saveprefs', action=argparse.BooleanOptionalAction, default=False, help='Overwrite an existing (or create new) preferences file at "/Library/Application Support/org/appUpdates/preferences.json". By default, prefs will be created if not present but NOT overwritten.')
+parser.add_argument('--saveprefs', action=argparse.BooleanOptionalAction, default=False, help='Overwrite an existing (or create new) preferences file at "/Library/Application Support/org/appUpdates/preferences.json". By default, prefs will be created if not present but NOT overwritten. Preferences set via configuration profile take precedence over local or URL-sourced preferences.')
 parser.add_argument('--setsilent', type=int, nargs='?', const=3600, default=None, help='Create and load a LaunchDaemon to run this script silently every x seconds. Default: every hour (3600) NOTE: Be sure to set org, icon, etc. or specify a preferences file with this data.')
 parser.add_argument('--setprompt', type=int, nargs='?', const=604800, default=None, help='Create and load a LaunchDaemon to run this script in prompt mode every x seconds. Default: every 7 days (604800) NOTE: Be sure to set org, icon, etc. or specify a preferences file with this data.')
 parser.add_argument('--setwatchpath', action=argparse.BooleanOptionalAction, default=False, help='Create and load a LaunchDaemon to trigger a silent run whenever a configuration profile is added, removed, or modified on the device. WARNING: This can potentially trigger a lot of silent runs depending on how much configuration profile traffic you have. This should be relatively inconsequential, but use with caution.')
@@ -147,10 +195,29 @@ args = parser.parse_args()
 pythonPath = sys.executable
 scriptPath = sys.argv[0]
 
-## If a preferences file or URL was provided, attempt to parse it
-prefsData = None
-if prefs := args.prefsfile:
+def endRun(exitCode = None, logLevel = 'info', message = None):
 
+	logCmd = getattr(logging, logLevel, 'info')
+
+	logCmd(message)
+	sys.exit(exitCode if int(exitCode) else None)
+
+## Check for a preferences configuration profile, URL, or local json file and attempt to parse if found
+prefsData = None
+
+profilePath = Path('/Library/Managed Preferences/com.github.swiftpatch.plist')
+
+if profilePath.exists():
+	logging.info('Found configuration profile for preferences, processing...')
+	prefsSource = 'profile'
+
+	try:	
+		prefsData = plistlib.loads(profilePath.read_bytes())
+		logging.debug('Successfully loaded preferences from configuration profile')
+	except:
+		endRun(2, 'critical', 'Failed to fetch preferences from configuration profile')
+
+elif prefs := args.prefsfile:
 	logging.info('Loading preferences from file...')
 
 	## Try to get prefs from URL
@@ -159,9 +226,9 @@ if prefs := args.prefsfile:
 		try:
 			prefsData = json.loads(requests.get(prefs).content)
 			logging.debug('Successfully retrieved preferences from URL')
+			prefsSource = 'url'
 		except:
-			logging.error('Failed to fetch prefs from URL')
-			sys.exit(2)
+			endRun(2, 'critical', 'Failed to fetch prefs from URL')
 
 	## Try to get prefs from file
 	elif Path(prefs).exists:
@@ -169,12 +236,11 @@ if prefs := args.prefsfile:
 		try:
 			prefsData = json.loads(Path(prefs).read_text())
 			logging.debug('Successfully retrieved preferences from file')
+			prefsSource = 'file'
 		except:
-			logging.error('Failed to fetch prefs from file')
-			sys.exit(2)
+			endRun(2, 'critical', 'Failed to fetch prefs from file')
 	else:
-		logging.error(f'Prefs file was specified but unable to be loaded')
-		sys.exit(2)
+		endRun(2, 'critical', 'Prefs file was specified but unable to be loaded')
 
 ## If preferences data was gathered from a file or URL, set those values
 ## Values from a preferences file are only set if the same option was not specified as a command-line argument
@@ -191,10 +257,27 @@ if prefsData:
 	requiredProcessList = prefsData.get('processes') if 'processes' in prefsData.keys() and 'processes' not in commandLineArgs else []
 	verbose = prefsData.get('verbose') if 'verbose' in prefsData.keys() and 'verbose' not in commandLineArgs else args.verbose
 
+	## Set additional preferences gathered from a file, if provided
+	## Simple mode defaults to False, using the full dialog with sidebar and instructions
+	## Speedtest (for estimating download time) defaults to True unless simple mode is enabled, in which case the data is not needed and the time can be saved
+	simpleMode = str(prefsData.get('simple')).lower() == 'true' if 'simple' in prefsData.keys() else False
+	speedtest = all([str(prefsData.get('speedtest')).lower() == 'true' if 'speedtest' in prefsData.keys() else True, not simpleMode])
+
+	## The dialog can be placed in any of validPositions on the user's screen
+	## Defaults to center if not set or set value is invalid
+	validPositions = [ "topleft", "left", "bottomleft", "top", "center", "bottom", "topright", "right", "bottomright" ]
+	position = prefsData.get('position').lower() if 'position' in prefsData.keys() and prefsData.get('position').lower() in validPositions else 'center'
+
+	## If an update is being run from Self Service, an ultralight interface will be used
+	selfService = prefsData.get('selfservice').lower() if 'selfservice' in prefsData.keys() and 'selfservice' not in commandLineArgs else args.selfservice
+	#### need to finish building this option
 else:
+
+	prefsSource = 'cli'
 
 	silentRun = args.silent
 	deferredRun = args.defer
+	selfService = args.selfservice
 	orgName = args.org
 	dialogPath = Path(args.dialog)
 	iconPath = Path(args.icon)
@@ -287,7 +370,8 @@ emojiDict = {
 	'thanksHands': b'\xF0\x9F\x99\x8F',
 	'eyes': b'\xF0\x9F\x91\x80',
 	'restartIcon': b'\xF0\x9F\x94\x81',
-	'rightArrow': b'\xE2\x9E\xA1'
+	'rightArrow': b'\xE2\x9E\xA1',
+	'speechBalloon': b'\xF0\x9F\x92\xAC'
 }
 
 ## Initialize some dicts and vars for dialog lists and behaviors
@@ -360,6 +444,12 @@ def requirementsCheck():
 	else:
 		logging.debug(f'Using Python version {pythonVersion} at {pythonPath}')
 
+	if getProcessStatus('dialog'):
+		logging.info('Another dialog is currently running!')
+		requirementsMet = False
+	else:
+		logging.debug('No dialog processes found, continuing...')
+
 	return requirementsMet
 
 ##########################
@@ -405,6 +495,14 @@ def loadLaunchDaemon(daemonPath):
 		str(daemonPath),
 	]
 
+	## Try to unload the LaunchDaemon so new data can be picked up if this is an update, and fail silently otherwise
+	try:
+		subprocess.run(['/bin/launchctl', 'unload', str(daemonPath)], text=True)
+		logging.info('Unloaded existing LaunchDaemon')
+	except:
+		logging.debug('Failed to unload existing LaunchDaemon. This message is not an error and can be ignored.')
+
+	## Load the LaunchDaemon
 	try:
 		subprocess.run(cmd, text=True, check=True)
 		logging.info('Daemon created and loaded successfully')
@@ -446,20 +544,23 @@ def updateStatus(status, statustext, listIndex):
 		return
 	
 	if silentRun and not forcePrompt:
-		logging.warning('Status updates cannot be sent to silent runs')
 		return
 	
-	itemStatus = f'status: {status}' if 'progress' not in status else status
-
-	dialogCommand = f'listitem: index: {listIndex}, {itemStatus}, statustext: {statustext}'
-
-	progressUpdate = {
+	if not selfService:
+		itemStatus = f'status: {status}' if 'progress' not in status else status
+		dialogCommand = f'listitem: index: {listIndex}, {itemStatus}, statustext: {statustext}'
+		progressUpdate = {
 		'status' : itemStatus,
 		'statustext' : statustext
-	}
-	dialogProgressList['listItem'][listIndex].update(progressUpdate)
-	
-	updateDialog(dialogCommand)
+		}
+		dialogProgressList['listItem'][listIndex].update(progressUpdate)
+		updateDialog(dialogCommand)
+	else:
+		if 'progress' in status:
+			updateDialog(status)
+		elif status == 'wait':
+			updateDialog('progress: 0')
+		updateDialog(f'progresstext: {statustext}')
 
 ## Check provided array of processes for security apps or other requirements
 def getProcessStatus(processName):
@@ -532,7 +633,7 @@ def getDeviceHealth():
 		'macOSVersion': macOSInstalledVer,
 		'macOSIsCurrent': macOSUpdated,
 		'serialNumber': platform.node().split('-')[1],
-		'systemUptimeDays': int(NSProcessInfo.processInfo().systemUptime() / 86400),
+		'systemUptimeDays': round(time.clock_gettime(time.CLOCK_MONOTONIC_RAW) / 86400),
 		'healthCheck': True if (len(requiredProcessList) > 0 and all(getProcessStatus(x) for x in requiredProcessList)) or len(requiredProcessList) == 0 else False,
 		'diskUsage': int((disk_usage('/').used / disk_usage('/').total) * 100)
 	}
@@ -541,7 +642,7 @@ def getDeviceHealth():
 ### Device Information\n\
 **Serial Number**\n\n{deviceInfo['serialNumber']}\n\n\
 **macOS Version**\n\n{getEmoji('greenCheck') if deviceInfo['macOSIsCurrent'] else getEmoji('redX')} {deviceInfo['macOSVersion']}{'<br>***Please update!***' if not deviceInfo['macOSIsCurrent'] else ''}\n\n\
-**Last Restart**\n\n{getEmoji('greenCheck') if deviceInfo['systemUptimeDays'] < 14 else getEmoji('redX')} {deviceInfo['systemUptimeDays']} day{'s' if {deviceInfo['systemUptimeDays']} != 1 else ''} ago{'<br>***Please restart soon!***' if deviceInfo['systemUptimeDays'] >= 14 else ''}\n\n\
+**Last Restart**\n\n{getEmoji('greenCheck') if deviceInfo['systemUptimeDays'] < 14 else getEmoji('redX')} {deviceInfo['systemUptimeDays']} day{'s' if deviceInfo['systemUptimeDays'] != 1 else ''} ago{'<br>***Please restart soon!***' if deviceInfo['systemUptimeDays'] >= 14 else ''}\n\n\
 **Disk Usage**\n\n{getEmoji('greenCheck') if deviceInfo['diskUsage'] < 75 else getEmoji('warningSymbol')} {deviceInfo['diskUsage']}%\n{'All good!' if deviceInfo['diskUsage'] < 75 else '<br>***Getting full!***'}\n\n\
 **Security Systems**\n\n{getEmoji('greenCheck') + ' All good!' if deviceInfo['healthCheck'] else getEmoji('redX') + '<br>***Please contact support!***'}\n\n\
 _A message from {orgName} IT_ {getEmoji('greenHeart')}"
@@ -583,7 +684,7 @@ def validateRunTiming():
 	if runReceipt.exists():
 		receiptData = json.loads(runReceipt.read_text())
 
-		lastRunTime = receiptData['silent' if silentRun else 'prompt']['runTime']
+		lastRunTime = receiptData.get('silent' if silentRun else 'prompt').get('runTime') or 0
 
 		runDelta = timeNow - lastRunTime
 		logging.debug(f'Update script was last run {runDelta} seconds ago')
@@ -626,7 +727,7 @@ def writeRunReceipt():
 
 	runData = {
 		'silent' if silentRun else 'prompt' : {
-			'runTime' : int(time.time()),
+			'runTime' : int(time.mktime(time.gmtime())),
 			'runResult' : runResult
 		}
 	}
@@ -665,7 +766,7 @@ def getAppPath(bid, versionKey=None):
 def getBinaryVersion(path):
 
 	## If there's no file there, log a warning
-	if not path.exists:
+	if not path.exists():
 		logging.warning(f'Unable to find {str(path.stem)} at {str(path)}')
 	else:
 		options = [ '-v', '-V', '--version', 'version' ]
@@ -674,12 +775,19 @@ def getBinaryVersion(path):
 		for option in options:
 			try:
 				cmd = [ str(path), option ]
-				versionCheck = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)
+				
+				try:
+					versionCheck = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)
+					
+				except FileNotFoundError:
+					continue
 
 				if version := re.search('\d*\.\d*\.\d*', versionCheck):
 					versionString = version[0]
 				elif version := re.search('\d*\.\d*', versionCheck):
 					versionString = version[0]
+				else:
+					continue
 
 				logging.debug(f'Got version {versionString} of {str(path)} using {option}')
 				return versionString
@@ -692,7 +800,6 @@ def getBinaryVersion(path):
 	## Otherwise, return a dummy version
 	logging.error(f'Unable to determine current version of {str(path)}')
 	return '0.0.0'
-
 
 ## Clean up LaunchDaemons from deferred update prompts
 ## If the current iteration is running from a LaunchDaemon, that daemon will still be present after the script exits
@@ -724,6 +831,8 @@ def setDeferral(deferralIndex=None):
 
 	## Map list indices of user deferral options to seconds for use in the LaunchDaemon
 	deferralIndexMap = {
+		# Random
+		-1: None,
 		# 5 minutes
 		0 : 300,
 		# 15 minutes
@@ -981,7 +1090,7 @@ def getUpdateRequirements():
 	logging.info('Gathering update requirements...')
 
 	profilesDir = Path('/Library/Managed Preferences')
-	updateProfiles = [x for x in profilesDir.iterdir() if x.match('com.appUpdates.managedApps*')]
+	updateProfiles = [x for x in profilesDir.iterdir() if re.match(f'com\.appUpdates\.managedApps\.{str(selfService)}.*'.lower(), str(x.stem).lower())]
 	logging.debug(f'Found update profiles: {updateProfiles}')
 
 	if not updateProfiles:
@@ -1087,7 +1196,7 @@ def getUpdateRequirements():
 			dialogProgressList['listItem'].append(listEntry)
 
 			## Sort lists together so index calculations below will be accurate
-			dialogPromptList['checkbox'].sort(key=lambda x: x['label'])
+			dialogPromptList['checkbox'].sort(key=lambda x: x['label'].split('|')[0].strip())
 
 			dialogProgressList['listItem'].sort(key=lambda x: x['title'])
 
@@ -1097,7 +1206,7 @@ def getUpdateRequirements():
 					'bundleID' : appBundleID,
 					'listIndex' : next(i for (i, x) in enumerate(dialogProgressList['listItem']) if x['title'].startswith(appDisplayName)),
 					'background' : not checkIfRunning(appBundleID),
-					'force' : switchDisabled,
+					'force' : False if silentRun and not checkIfRunning(appBundleID) else switchDisabled,
 					'result' : None,
 					'pkgSize' : appPackageSize,
 					'versionString' : appTargetVersion,
@@ -1137,6 +1246,7 @@ def monitorPolicyRun(logStream, appName):
 		for logData in logStream.stdout:
 			if re.match('^Checking for policies triggered by.*$', logData):
 				logging.debug(logData)
+				updateDialog('overlayicon: SF=icloud.and.arrow.down,palette=auto')
 				updateStatus('pending', 'Download pending...', listIndex)
 
 			elif re.match('^Executing Policy Install Latest.*$', logData):
@@ -1159,7 +1269,7 @@ def monitorPolicyRun(logStream, appName):
 					updateStatus(f'progress: {percentDownloaded}', 'Downloading...', listIndex)
 					if percentDownloaded == 100:
 						break
-					time.sleep(0.5)
+					time.sleep(0.1)
 				else:
 					updateStatus('wait', 'Validating download...', listIndex)
 
@@ -1169,6 +1279,7 @@ def monitorPolicyRun(logStream, appName):
 
 			elif re.match('^Installing.*$', logData):
 				logging.debug(logData)
+				updateDialog('overlayicon: /System/Library/CoreServices/Installer.app')
 				updateStatus('wait', 'Installing...', listIndex)
 
 			elif re.match('^Successfully installed.*$', logData):
@@ -1176,18 +1287,21 @@ def monitorPolicyRun(logStream, appName):
 				versionStringMismatch, _ = checkVersion(bundleID, expectedVersionString, versionKey)
 				if not versionStringMismatch:
 					logging.debug(f'Verified new version instalation for {appName}')
+					updateDialog('overlayicon: SF=checkmark.circle.fill,color=green')
 					updateStatus('success', 'Update complete!', listIndex)
 					appListEntries[appName].update({'result':'success'})
 					dialogProgressList['listItem'][listIndex].update({'status':'success'})
 					logging.info(f'{appName} was successfully updated to version {expectedVersionString}')
 				else:
 					logging.warning(f'Unable to verify updated version for {appName}')
+					updateDialog('overlayicon: SF=exclamationmark.triangle.fill,color=yellow')
 					updateStatus('error', 'Unable to verify update', listIndex)
 					appListEntries[appName].update({'result':'unknown'})
 					dialogProgressList['listItem'][listIndex].update({'status':'error','statustext':'Unable to verify update'})
 				break
 			else:
 				logging.debug(logData)
+				updateDialog('overlayicon: SF=x.square,color=red')
 				updateStatus('fail', 'Something went wrong', listIndex)
 				appListEntries[appName].update({'result':'fail'})
 				dialogProgressList['listItem'][listIndex].update({'status':'fail','statustext':'Something went wrong'})
@@ -1218,35 +1332,28 @@ def runJamfPolicy(appName):
 ## Build prompt json and call dialog
 def promptForUpdates():
 
-	global infoboxData
-	infoboxData = getDeviceHealth()
-
-	promptMessage = f"\
-The following app updates are available. Please select which apps you'd like to update.\n\n\
-{getEmoji('lightbulb')} Any running apps selected for update will be closed.\n\n\
-{getEmoji('warningSymbol')} All selections will be applied when the timer expires.\n\n\
-{getEmoji('hourglass')} Deferral options, if available, are at the bottom.\n\n\
-**Note: Any apps not currently running or with no remaining deferrals will be updated at this time.**"
+	defaultMessage = f"\
+{getEmoji('lightbulb')} Any running apps selected for update will be closed.  \n \
+{getEmoji('hourglass')} Deferral options, if available, are at the bottom.  \n\
+{getEmoji('eyes')} To **defer** an update, first **deselect** the apps you'd like to update, then choose a deferral time below the list.\n\n\
+**Note: Any apps not currently running or with no remaining deferrals will be updated at this time.**\n\n\
+Apps to be _deferred_ will look like this:          ![toggleOff](https://i.imgur.com/mOd52bV.png)\n\n\
+Apps to be _updated now_ will look like this:   ![toggleOn](https://i.imgur.com/xBHRc0K.png)\n\n"
 
 	dialogConfig = {
 		'title' : 'Managed App Updates Available',
 		'titlefont': 'size=20',
-		'icon' : str(iconPath),
-		'iconsize': '120',
-		'message': promptMessage,
-		'messagefont': 'size=12',
+		'messagefont': 'size=14',
 		'messageposition': 'top',
-		'button1text': 'Continue',
+		'position': position,
+		'button1text': 'Update Apps',
 		'button1disabled': 'True',
 		'timer': '300',
-		'infobox': infoboxData,
-		'hideicon' : 0,
 		'infobutton' : 0,
 		'quitoninfo' : 0,
 		'ontop' : 1,
 		'moveable' : 1,
 		'quitkey' : 'i',
-		'height': '625',
 		'json' : 1,
 		'checkboxstyle' : {
 			'style' : 'switch',
@@ -1255,13 +1362,38 @@ The following app updates are available. Please select which apps you'd like to 
 		'checkbox' : dialogPromptList['checkbox']
 	}
 
+	if simpleMode:
+
+		modeConfig = {
+			'message': '**App to be Quit and Updated                                                              Update Now?**',
+			'messagealignment': 'center',
+			'hideicon': 1,
+			'width' : '550'
+		}
+
+	else:
+
+		global infoboxData
+		infoboxData = getDeviceHealth()
+
+		modeConfig = {
+			'message': defaultMessage,
+			'icon': str(iconPath),
+			'iconsize': '120',
+			'infobox': infoboxData,
+			'hideicon': 0,
+			'height': '625'
+		}
+
+	dialogConfig.update(modeConfig)
+
 	## Add deferral options to the dialog config if any of the pending updates can be deferred
-	## Defaults to a 15 minute deferral
+	## Default selection of None will result in a randomized 5-15 minute deferral
 	if bool([x for x in dialogPromptList['checkbox'] if x['disabled'] is False]):
 		logging.debug('Adding deferral options to prompt configuration...')
 		deferOptions = {
 			'selectitems': [
-				{ 'title': 'Deferral Time:', 'required': 'False', 'values': ['5 minutes', '15 minutes', '1 hour', '3 hours', '1 day'], 'default': '15 minutes' }
+				{ 'title': 'Defer Unselected Apps:', 'required': 'False', 'values': ['5 minutes', '15 minutes', '1 hour', '3 hours', '1 day'] }
 			]
 		}
 		dialogConfig.update(deferOptions)
@@ -1271,7 +1403,7 @@ The following app updates are available. Please select which apps you'd like to 
 	Path(promptJson).write_text(json.dumps(dialogConfig))
 
 	promptCmd = [
-		str(dialogPath),
+		'/opt/chime/bin/dialog',
 		'--jsonfile',
 		promptJson
 	]
@@ -1290,7 +1422,7 @@ The following app updates are available. Please select which apps you'd like to 
 	return promptResponse, promptReturnCode
 
 ## Build the progress reporting config
-def parseUserSelecetions(promptOutput):
+def parseUserSelections(promptOutput):
 
 	totalDownloadSize = 0
 
@@ -1310,51 +1442,76 @@ def parseUserSelecetions(promptOutput):
 			incrementDeferral(appFriendlyName)
 		else:
 			logging.info(f'Update accepted for {appFriendlyName}')
-			appDownloadSize = appListEntries[appFriendlyName]['pkgSize']
+			appDownloadSize = appListEntries.get(appFriendlyName).get('pkgSize') or 0
 			appListEntries[appFriendlyName].update({'listIndex':next(i for (i, x) in enumerate(dialogProgressList['listItem']) if x['title'].startswith(appFriendlyName))})
 			logging.debug(f'New list index for {appFriendlyName} is {appListEntries[appFriendlyName]["listIndex"]}')
 			totalDownloadSize += appDownloadSize
 			continue
 
-	if not all([x for x in promptOutput.values()]):
-		setDeferral(promptOutput['Deferral Time:']['selectedIndex'])
+	## To reliably determine if any apps were deferred, remove non-app keys from the promptOutput object
+	promptMetaKeys = [ 'SelectedIndex', 'SelectedOption', 'Defer Unselected Apps:' ]
+	promptedApps = [x for x in promptOutput if x not in promptMetaKeys]
+
+	if not all([x for x in promptedApps]):
+		setDeferral(promptOutput['Defer Unselected Apps:']['selectedIndex'])
 	else:
 		removeDaemons()
 
 	if len(dialogProgressList['listItem']) == 0:
-		logging.info('No apps to be updated on this run. Updating inventory and exiting...')
 		writeRunReceipt()
 		runRecon()
-		sys.exit(0)
+		endRun(0, 'info', 'No apps to be updated on this run. Updating inventory and exiting...')
 
-	totalDownloadSeconds = round((totalDownloadSize / downloadSpeed) + (len(dialogProgressList['listItem']) * 10))
-	totalDownloadTime = '{} minutes, {} seconds'.format(*divmod(totalDownloadSeconds, 60))
-
-	promptMessage = f"\
+	defaultMessage = f"\
 {getEmoji('thanksHands')} Thanks!\n\n\
 {getEmoji('eyes')} You can track the status of your updates below.\n\n\
 {getEmoji('restartIcon')} Any apps we had to close will be re-opened when the update is completed.\n\n\
-{getEmoji('greenX')} This message will be dismissed once all updates are done, or you can click \"OK\" to dismiss it now.\n\n\n\n\
+{getEmoji('greenX')} This message will be dismissed once all updates are done, or you can click \"OK\" to dismiss it now."
+	
+	if speedtest:
+		totalDownloadSeconds = round((totalDownloadSize / downloadSpeed) + (len(dialogProgressList['listItem']) * 10))
+		totalDownloadTime = '{} minutes, {} seconds'.format(*divmod(totalDownloadSeconds, 60))
+		defaultMessage += f"\n\n\n\n\
 {getEmoji('hourglass')} The estimated total download time for these updates is {totalDownloadTime}"
 
 	dialogConfig = {
 		'title' : 'Managed App Updates Installing',
 		'titlefont': 'size=20',
-		'icon' : str(iconPath),
-		'iconsize' : '120',
-		'message': promptMessage,
 		'messagefont': 'size=12',
 		'messageposition': 'top',
+		'position': position,
 		'button1text': 'OK',
-		'infobox': infoboxData,
-		'hideicon' : 0,
 		'infobutton' : 0,
 		'quitoninfo' : 0,
 		'moveable' : 1,
 		'quitkey' : 'i',
-		'height': '625',
 		'listitem': dialogProgressList['listItem']
 	}
+
+	if simpleMode:
+
+		modeConfig = {
+			'message': '**App to be Quit and Updated                                                            Update Status**',
+			'messagealignment': 'center',
+			'hideicon': 1,
+			'width': '550',
+		}
+
+	else:
+
+		global infoboxData
+		infoboxData = getDeviceHealth()
+
+		modeConfig = {
+			'message': defaultMessage,
+			'icon': str(iconPath),
+			'iconsize': '120',
+			'infobox': infoboxData,
+			'hideicon': 0,
+			'height': '650'
+		}
+
+	dialogConfig.update(modeConfig)
 
 	statusJson = '/var/tmp/status.json'
 
@@ -1443,7 +1600,8 @@ def setupRunSchedule(setupType):
 		'ProgramArguments' : [
 			pythonPath,
 			scriptPath
-		]
+		],
+		'RunAtLoad' : True
 	}
 
 	## If we have a preferences file, use it
@@ -1512,8 +1670,7 @@ def run():
 
 	## Make sure the script can run
 	if not requirementsCheck():
-		logging.error('Some requirements were not met. See critical level logging above for details. This script cannot continue.')
-		sys.exit(1)
+		endRun(1, 'error', 'Some requirements were not met. See critical level logging above for details. This script cannot continue.')
 	else:
 		logging.debug('Requirements met, continuing with execution')
 
@@ -1542,7 +1699,7 @@ def run():
 			setupResultCode = setupRunSchedule(setupType)
 			setupCodeSum = setupCodeSum + setupResultCode
 
-		sys.exit(setupCodeSum)
+		endRun(setupCodeSum, 'info', 'Setup actions complete')
 
 	logging.info('Update attempt started')
 
@@ -1554,9 +1711,90 @@ def run():
 
 	## No updates to install? Exit!
 	if not promptList:
-		logging.info('No prompt list generated, updating inventory and exiting...')
 		runRecon()
-		sys.exit(0)
+		endRun(0, 'info', 'No prompt list generated, updating inventory and exiting...')
+
+	## If this is a single-item Self Service run, generate the ultralight interface and install the update
+	if selfService:
+		logging.info(f'Running Self Service update for {selfService}')
+
+		appData = appListEntries.get(list(appListEntries.keys())[0])
+		appName = list(appListEntries.keys())[0]
+		bundleID = appData['bundleID']
+		backgroundUpdate = appData['background']
+
+		dialogConfig = {
+			'title': 'none',
+			'icon': promptList[0]['icon'],
+			'message': f'{list(appListEntries.keys())[0]} will be {"quit and " if not backgroundUpdate else ""}updated in 30 seconds.<br>You may click Cancel to stop the update.',
+			'mini': True,
+			'timer': '30',
+			'position': position,
+			'button1text': 'Update Now',
+			'button1disabled': True,
+			'button2text': 'Cancel'
+		}
+
+		promptJson = '/var/tmp/selfserviceprompt.json'
+
+		Path(promptJson).write_text(json.dumps(dialogConfig))
+
+		dialogCmd = [
+			'/opt/chime/bin/dialog',
+			'--jsonfile',
+			promptJson
+		]
+
+		logging.debug('Generating prompt dialog...')
+		logging.debug(f'Prompt dialog configuration: {loadJson(Path(promptJson))}')
+		prompt = subprocess.run(dialogCmd, text=True, capture_output=True)
+
+		if prompt.returncode == 0:
+			logging.info('Self Service update accepted')
+
+			for key in [ 'timer', 'button1text', 'button1disabled', 'button2text' ]:
+				dialogConfig.pop(key)
+
+			statusKeys = {
+				'progress': 100,
+				'message': 'Update in progress, please wait...'
+			}
+
+			dialogConfig.update(statusKeys)
+
+			statusJson = '/var/tmp/selfservicestatus.json'
+			Path(statusJson).write_text(json.dumps(dialogConfig))
+
+			dialogCmd.pop(-1)
+			dialogCmd += [ statusJson, '--commandfile', dialogCommandFile, '&' ]
+
+			logging.debug('Generating status dialog...')
+			logging.debug(f'Status dialog configuration: {loadJson(Path(statusJson))}')
+			subprocess.Popen(dialogCmd, text=True, start_new_session=True)
+
+			quitApp(bundleID)
+			time.sleep(0.5)
+			runJamfPolicy(appName)
+
+			updateResult = appListEntries.get(list(appListEntries.keys())[0]).get('result')
+			time.sleep(0.5)
+			if updateResult == 'success':
+				updateDialog('Update complete! This window will be dismissed shortly.')
+			else:
+				updateDialog('Something went wrong during the update. Please try again. This window will be dismissed shortly.')
+			
+			if not backgroundUpdate:
+				logging.info(f'Relaunching {appName}...')
+				reopenCmd = ['/bin/launchctl', 'asuser', userUID, 'sudo', '-u', userName, '/usr/bin/open', '-g', '-b', bundleID]
+				subprocess.run(reopenCmd, text=True)
+
+		else:
+			logging.info('Self Service update was canceled')
+
+
+		runRecon()
+		updateDialog('quit:')
+		endRun(0, 'info', 'Self Service update completed, updating inventory and exiting...')
 
 	## Determine which updates (if any) can be installed in the background (not currently running)
 	backgroundStatus = [appListEntries[x].get('background') for x in appListEntries]
@@ -1569,22 +1807,21 @@ def run():
 		writeRunReceipt()
 		runRecon()
 		time.sleep(2)
-		sys.exit(0)
+		endRun(0, 'info', 'Background updates completed')
 
 	## If the user is in a Zoom meeting, presenting in an app, or has Focus/DND enabled, defer for a random 5-15 minute interval and exit
 	if checkInterruptions() and not forcePrompt:
-		logging.warning('Interruption check failed after 5 minutes, deferring...')
 		setDeferral(None)
 		time.sleep(2)
-		sys.exit(0)
+		endRun(0, 'info', 'Interruption check failed after 5 minutes, deferring...')
 
 	## If the timing of this run is otherwise invalid (see validateRunTiming for details), exit
 	if not validateRunTiming() and not forcePrompt:
-		logging.warning('Invalid run timing, exiting...')
-		sys.exit(0)
+		endRun(0, 'warning', 'Invalid run timing. This does not necessarily mean something is wrong, but no prompt will be generated now.')
 
 	## All checks completed, send the prompt!
-	getDownloadSpeed()
+	if speedtest:
+		getDownloadSpeed()
 	userSelections, promptReturnCode = promptForUpdates()
 
 	## If the timer expires (4) or the user closes the prompt with Cmd + Q (10), update any apps not running or being forced
@@ -1600,14 +1837,13 @@ def run():
 				quitApp(appData['bundleID'])
 				runJamfPolicy(app)
 
-		logging.debug('Setting randomized deferral')
 		setDeferral(None)
 		runRecon()
 		time.sleep(2)
-		sys.exit(0)
+		endRun(0, 'info', 'Set randomized deferral for running apps.')
 
 	## From the prompt result, determine which apps will be updated and deferred
-	parseUserSelecetions(userSelections)
+	parseUserSelections(userSelections)
 
 	## Finally, update the apps
 	for app in appListEntries.keys():
@@ -1643,15 +1879,14 @@ def run():
 	updateDialog('listitem: index: 0, status: wait')
 	for appItem in dialogProgressList['listItem']:
 		updateDialog(f'listitem: add, title: {appItem["title"]}, icon: {appItem["icon"]}, status: {appItem["status"]}, statustext: {appItem["statustext"]}')
-
+	
 	writeRunReceipt()
 
 	runRecon()
 
 	updateDialog('quit:')
-	logging.info('Run completed.')
 	time.sleep(2)
-	sys.exit(0)
+	endRun(0, 'info', 'Run completed.')
 
 ## Main
 if __name__ == '__main__':
