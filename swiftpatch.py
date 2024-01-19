@@ -68,7 +68,7 @@ Use SwiftDialog to prompt users to update their apps
 Version rollback functionality is not yet implemented. Some of the bits are already written, but no testing has been done and rollbacks are not expected to work.
 """
 
-scriptVersion = "1.1.1"
+scriptVersion = "1.1.2"
 requiredDialogVersionString = "2.3.0"
 requiredDialogPattern = (
     "^(\d{2,}.*|[3-9].*|2\.\d{2,}.*|2\.[4-9].*|2\.3\.\d{2,}.*|2\.3\.[1-9].*|2\.3\.0.*)$"
@@ -152,6 +152,14 @@ Fixed processing of --selfservice argument in multiple places
 Removed a placeholder comment
 Updated formatting with Black for improved readability (also thanks to @erchn)
 Removed backticks from 1.1.0 release notes--look great on GitHub, behave rudely when writing this script to disk from a shell script
+
+---- 1.1.2 | 2024-01-19 ----
+Fixed missing logging of preference detection
+Fixed bug with preference loading when a configuration profile and preferences file are present
+Added functionality to removeDaemons to accept and remove a single daemon by path
+Added missing silent argument to preferences file creation in setPrefsFile
+Updated setDeferral and setupRunSchedule functions to handle daemon creation using configuration profile preferences
+Updated setupRunSchedule to remove existing daemons if present
 """
 
 ##########################
@@ -291,21 +299,21 @@ prefsData = None
 profilePath = Path("/Library/Managed Preferences/com.github.swiftpatch.plist")
 
 if profilePath.exists():
-    logging.info("Found configuration profile for preferences, processing...")
+    print("Found configuration profile for preferences, processing...")
     prefsSource = "profile"
 
     try:
         prefsData = plistlib.loads(profilePath.read_bytes())
-        logging.debug("Successfully loaded preferences from configuration profile")
+        print("Successfully loaded preferences from configuration profile")
     except:
         endRun(2, "critical", "Failed to fetch preferences from configuration profile")
 
-if prefs := args.prefsfile:
-    logging.info("Loading preferences from file...")
+if prefs := args.prefsfile and not prefsData:
+    print("Loading preferences from file...")
 
     ## Try to get prefs from URL
     if prefs.startswith("http://") or prefs.startswith("https://"):
-        logging.debug(f"Found URL for preferences: {prefs}")
+        print(f"Found URL for preferences: {prefs}")
         try:
             prefsData = json.loads(requests.get(prefs).content)
             prefsSource = "url"
@@ -314,7 +322,7 @@ if prefs := args.prefsfile:
 
     ## Try to get prefs from file
     elif Path(prefs).exists:
-        logging.debug(f"Attempting to read preferences from {prefs}...")
+        print(f"Attempting to read preferences from {prefs}...")
         try:
             prefsData = json.loads(Path(prefs).read_text())
             prefsSource = "file"
@@ -323,7 +331,7 @@ if prefs := args.prefsfile:
 
     else:
         endRun(2, "critical", "Prefs file was specified but unable to be loaded")
-    logging.debug(f"Successfully retrieved preferences from {prefsSource}")
+    print(f"Successfully retrieved preferences from {prefsSource}")
 
 
 silentRun = args.silent if "silent" in args else None
@@ -979,16 +987,21 @@ def getBinaryVersion(path):
 ## If the current iteration is running from a LaunchDaemon, that daemon will still be present after the script exits
 ## It will need to be unloaded and deleted before the script exits
 ## Otherwise, it will be loaded again next time the device restarts and the user will get an erroneous update prompt
-def removeDaemons():
-    daemonFiles = sorted(
-        Path("/Library/LaunchDaemons").glob(
-            f"com.{orgName.lower()}.appUpdates.runDeferral.*.plist"
-        )
-    )[:-1]
-    if daemonFiles:
+def removeDaemons(daemonPath=None):
+    if daemonPath:
+        daemonFiles = [Path(daemonPath)]
+    else:
+        daemonFiles = sorted(
+            Path("/Library/LaunchDaemons").glob(
+                f"com.{orgName.lower()}.appUpdates.runDeferral.*.plist"
+            )
+        )[:-1]
+
+    if "daemonFiles" in locals():
         logging.debug(f"Removing old LaunchDaemons: {daemonFiles}")
     else:
         logging.debug("No old LaunchDaemons found to remove")
+        return
 
     for daemon in daemonFiles:
         try:
@@ -1038,39 +1051,37 @@ def setDeferral(deferralIndex=None):
     daemonFile = f"/Library/LaunchDaemons/{daemonLabel}.plist"
     logging.debug(f"Creating deferral daemon at {daemonFile}")
 
-    if setPrefsFile():
-        daemonData = {
-            "Label": daemonLabel,
-            "LaunchOnlyOnce": True,
-            "ProgramArguments": (
-                pythonPath,
-                scriptPath,
-                "--no-silent",
-                "--defer",
+    daemonData = {
+        "Label": daemonLabel,
+        "LaunchOnlyOnce": True,
+        "ProgramArguments": [
+            pythonPath,
+            scriptPath,
+            "--no-silent",
+            "--defer",
+        ],
+        "StartInterval": deferralPeriod,
+    }
+
+    if prefsSource != "profile":
+        if setPrefsFile():
+            args = [
                 "--prefsfile",
                 str(prefsPath),
-            ),
-            "StartInterval": deferralPeriod,
-        }
+            ]
 
-    else:
-        daemonData = {
-            "Label": daemonLabel,
-            "LaunchOnlyOnce": True,
-            "ProgramArguments": (
-                pythonPath,
-                scriptPath,
-                "--no-silent",
-                "--defer",
+        else:
+            args = [
                 "--org",
                 orgName,
                 "--dialog",
                 str(dialogPath),
                 "--icon",
                 str(iconPath),
-            ),
-            "StartInterval": deferralPeriod,
-        }
+            ]
+
+        daemonData["ProgramArguments"].extend(args)
+        daemonData["ProgramArguments"] = tuple(daemonData["ProgramArguments"])
 
     dumpPlist(daemonData, Path(daemonFile))
 
@@ -1354,7 +1365,14 @@ def getUpdateRequirements():
         if updateRequired:
             logging.info(f"{appDisplayName} needs to be updated")
 
-            if all([silentRun, checkIfRunning(appBundleID), not appForceUpdate, not selfService]):
+            if all(
+                [
+                    silentRun,
+                    checkIfRunning(appBundleID),
+                    not appForceUpdate,
+                    not selfService,
+                ]
+            ):
                 logging.warning(
                     f"Silent run is enabled and {appDisplayName} is running, skipping update"
                 )
@@ -1833,6 +1851,9 @@ def getDownloadSpeed():
 
 ## Create a preferences file to reference during future scheduled/deferred runs using values from this run
 def setPrefsFile():
+    if prefsSource == "profile":
+        logging.info("Configuration profile found, skipping preferences file creation")
+        return False
     logging.debug("Checking for existing preferences file...")
     if args.saveprefs or not prefsPath.exists():
         logging.debug("Creating preferences file using current run settings:")
@@ -1846,6 +1867,7 @@ def setPrefsFile():
             "dialog": str(dialogPath),
             "icon": str(iconPath),
             "processes": requiredProcessList,
+            "silent": silentRun,
         }
 
         ## Write out to file
@@ -1874,6 +1896,9 @@ def setupRunSchedule(setupType):
     daemonFile = f"/Library/LaunchDaemons/{daemonLabel}.plist"
     logging.debug(f"Creating daemon at {daemonFile}")
 
+    ## Unload and remove any existing daemons
+    removeDaemons(daemonFile)
+
     ## Start constructing the daemon
     daemonData = {
         "Label": daemonLabel,
@@ -1881,8 +1906,12 @@ def setupRunSchedule(setupType):
         "RunAtLoad": True,
     }
 
-    ## If we have a preferences file, use it
-    if setPrefsFile():
+    ## Configuration profile settings take precedence
+    if prefsSource == "profile":
+        logging.info("Using configuration profile settings")
+
+    ## If we have a preferences file instead of config profile, use it
+    elif setPrefsFile():
         logging.info("Using existing preferences file")
 
         daemonData["ProgramArguments"].append("--prefsfile")
