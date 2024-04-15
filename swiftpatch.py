@@ -68,14 +68,14 @@ Use SwiftDialog to prompt users to update their apps
 Version rollback functionality is not yet implemented. Some of the bits are already written, but no testing has been done and rollbacks are not expected to work.
 """
 
-scriptVersion = "1.1.2"
+scriptVersion = "1.1.3"
 requiredDialogVersionString = "2.3.0"
 requiredDialogPattern = (
-    "^(\d{2,}.*|[3-9].*|2\.\d{2,}.*|2\.[4-9].*|2\.3\.\d{2,}.*|2\.3\.[1-9].*|2\.3\.0.*)$"
+    r"^(\d{2,}.*|[3-9].*|2\.\d{2,}.*|2\.[4-9].*|2\.3\.\d{2,}.*|2\.3\.[1-9].*|2\.3\.0.*)$"
 )
 requiredPythonVersionString = "3.10"
 requiredPythonPattern = (
-    "^(\d{2,}.*|[4-9].*|3\.\d{3,}.*|3\.[2-9]\d{1,}.*|3\.1[1-9].*|3\.10.*)$"
+    r"^(\d{2,}.*|[4-9].*|3\.\d{3,}.*|3\.[2-9]\d{1,}.*|3\.1[1-9].*|3\.10.*)$"
 )
 """
 CHANGELOG:
@@ -160,6 +160,13 @@ Added functionality to removeDaemons to accept and remove a single daemon by pat
 Added missing silent argument to preferences file creation in setPrefsFile
 Updated setDeferral and setupRunSchedule functions to handle daemon creation using configuration profile preferences
 Updated setupRunSchedule to remove existing daemons if present
+
+---- 1.1.3 | 2024-04-15 ----
+Fixed some syntax warnings with regex patterns by marking them as raw strings
+Updated download-tracking refresh timing and added percentage display
+Updated progress bar behavior to better match reality
+Updated messaging for completed Self Service updates
+Minor formatting updates
 """
 
 ##########################
@@ -688,7 +695,7 @@ def updateStatus(status, statustext, listIndex):
         if "progress" in status:
             updateDialog(status)
         elif status == "wait":
-            updateDialog("progress: 0")
+            updateDialog("progress: reset")
         updateDialog(f"progresstext: {statustext}")
 
 
@@ -756,7 +763,7 @@ def getOSVersionData():
             reverse=True,
         )[0].get("ProductVersion")
 
-        if not re.match("\d{2}\.\d\.\d", latestVersion):
+        if not re.match(r"\d{2}\.\d\.\d", latestVersion):
             logging.warning(
                 "Latest version from Apple catalog does not match expected semantic versioning pattern!"
             )
@@ -788,13 +795,15 @@ def getDeviceHealth():
         "macOSIsCurrent": macOSUpdated,
         "serialNumber": platform.node().split("-")[1],
         "systemUptimeDays": round(time.clock_gettime(time.CLOCK_MONOTONIC_RAW) / 86400),
-        "healthCheck": True
-        if (
-            len(requiredProcessList) > 0
-            and all(getProcessStatus(x) for x in requiredProcessList)
-        )
-        or len(requiredProcessList) == 0
-        else False,
+        "healthCheck": (
+            True
+            if (
+                len(requiredProcessList) > 0
+                and all(getProcessStatus(x) for x in requiredProcessList)
+            )
+            or len(requiredProcessList) == 0
+            else False
+        ),
         "diskUsage": int((disk_usage("/").used / disk_usage("/").total) * 100),
     }
 
@@ -894,9 +903,7 @@ def writeRunReceipt():
         logging.debug(f"Updating run result: {updateResult}")
 
     runData = {
-        "silent"
-        if silentRun
-        else "prompt": {
+        "silent" if silentRun else "prompt": {
             "runTime": int(time.mktime(time.gmtime())),
             "runResult": runResult,
         }
@@ -961,9 +968,9 @@ def getBinaryVersion(path):
                 except FileNotFoundError:
                     continue
 
-                if version := re.search("\d*\.\d*\.\d*", versionCheck):
+                if version := re.search(r"\d*\.\d*\.\d*", versionCheck):
                     versionString = version[0]
-                elif version := re.search("\d*\.\d*", versionCheck):
+                elif version := re.search(r"\d*\.\d*", versionCheck):
                     versionString = version[0]
                 else:
                     continue
@@ -1196,7 +1203,7 @@ def checkForDnd():
 ## Check if the user is using an app in presentation mode
 def checkForPresentation():
     displaySleepAssertions = subprocess.run(
-        '/usr/bin/pmset -g assertions | /usr/bin/awk \'/NoDisplaySleepAssertion | PreventUserIdleDisplaySleep/ && match($0,/\(.+\)/) && ! /coreaudiod/ && ! /Video\ Wake\ Lock/ {gsub(/^.*\(/,"",$0); gsub(/\).*$/,"",$0); print};\'',
+        r'/usr/bin/pmset -g assertions | /usr/bin/awk \'/NoDisplaySleepAssertion | PreventUserIdleDisplaySleep/ && match($0,/\(.+\)/) && ! /coreaudiod/ && ! /Video\ Wake\ Lock/ {gsub(/^.*\(/,"",$0); gsub(/\).*$/,"",$0); print};\'',
         capture_output=True,
         text=True,
         shell=True,
@@ -1303,7 +1310,7 @@ def getUpdateRequirements():
         x
         for x in profilesDir.iterdir()
         if re.match(
-            f"com\.appUpdates\.managedApps\.{selfService}.*".lower(),
+            f"com\\.appUpdates\\.managedApps\\.{selfService}.*".lower(),
             str(x.stem).lower(),
         )
     ]
@@ -1458,9 +1465,11 @@ def getUpdateRequirements():
                         if x["title"].startswith(appDisplayName)
                     ),
                     "background": not checkIfRunning(appBundleID),
-                    "force": False
-                    if silentRun and not checkIfRunning(appBundleID)
-                    else switchDisabled,
+                    "force": (
+                        False
+                        if silentRun and not checkIfRunning(appBundleID)
+                        else switchDisabled
+                    ),
                     "result": None,
                     "pkgSize": appPackageSize,
                     "versionString": appTargetVersion,
@@ -1526,11 +1535,13 @@ def monitorPolicyRun(logStream, appName):
                     bytesDownloaded = pkgPath.stat().st_size
                     percentDownloaded = round((bytesDownloaded / downloadSize) * 100)
                     updateStatus(
-                        f"progress: {percentDownloaded}", "Downloading...", listIndex
+                        f"progress: {percentDownloaded}",
+                        f"Downloading...({percentDownloaded}%)",
+                        listIndex,
                     )
                     if percentDownloaded == 100:
                         break
-                    time.sleep(0.1)
+                    time.sleep(0.05)
                 else:
                     updateStatus("wait", "Validating download...", listIndex)
 
@@ -1682,7 +1693,7 @@ Apps to be _updated now_ will look like this:   ![toggleOn](https://i.imgur.com/
 
     Path(promptJson).write_text(json.dumps(dialogConfig))
 
-    promptCmd = ["/opt/chime/bin/dialog", "--jsonfile", promptJson]
+    promptCmd = [str(dialogPath), "--jsonfile", promptJson]
 
     logging.debug("Generating prompt dialog...")
     logging.debug(f"Prompt dialog configuration: {loadJson(Path(promptJson))}")
@@ -2038,7 +2049,7 @@ def run():
 
         Path(promptJson).write_text(json.dumps(dialogConfig))
 
-        dialogCmd = ["/opt/chime/bin/dialog", "--jsonfile", promptJson]
+        dialogCmd = [str(dialogPath), "--jsonfile", promptJson]
 
         logging.debug("Generating prompt dialog...")
         logging.debug(f"Prompt dialog configuration: {loadJson(Path(promptJson))}")
@@ -2075,11 +2086,12 @@ def run():
                 "result"
             )
             time.sleep(0.5)
+            updateDialog("progress: complete")
             if updateResult == "success":
-                updateDialog("Update complete! This window will be dismissed shortly.")
+                updateDialog("message: Update complete!<br><br>This window will be dismissed shortly.")
             else:
                 updateDialog(
-                    "Something went wrong during the update. Please try again. This window will be dismissed shortly."
+                    "message: Something went wrong. Please try again or contact IT support.<br>This window will be dismissed shortly."
                 )
 
             if not backgroundUpdate:
