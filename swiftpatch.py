@@ -68,7 +68,7 @@ Use SwiftDialog to prompt users to update their apps
 Version rollback functionality is not yet implemented. Some of the bits are already written, but no testing has been done and rollbacks are not expected to work.
 """
 
-scriptVersion = "1.1.3"
+scriptVersion = "1.1.4"
 requiredDialogVersionString = "2.3.0"
 requiredDialogPattern = (
     r"^(\d{2,}.*|[3-9].*|2\.\d{2,}.*|2\.[4-9].*|2\.3\.\d{2,}.*|2\.3\.[1-9].*|2\.3\.0.*)$"
@@ -167,6 +167,9 @@ Updated download-tracking refresh timing and added percentage display
 Updated progress bar behavior to better match reality
 Updated messaging for completed Self Service updates
 Minor formatting updates
+
+---- 1.1.4 | 2024-04-16 ----
+Fix mishandling of empty version regex patterns
 """
 
 ##########################
@@ -1246,6 +1249,11 @@ def checkVersion(
     else:
         installedVersion = getBinaryVersion(appPath)
 
+    versionCheck = None
+
+    ## Only proceed with patterns that aren't empty
+    appVersionRegex = [x for x in appVersionRegex if x != r"^$"]
+
     ## Fall back to version string comparison if no regex provided
     if not appVersionRegex:
         logging.warning("No version regex provided, using string comparison")
@@ -1261,9 +1269,6 @@ def checkVersion(
             versionCheck = True
 
         return versionCheck, installedVersion
-
-    ## Only proceed with patterns that aren't empty
-    appVersionRegex = [x for x in appVersionRegex if x != "^$"]
 
     for pattern in appVersionRegex:
         ## If either the CFBundleVersion or CFBundleShortVersionString match the pattern, matchTest will evaluate True
@@ -1290,7 +1295,7 @@ def checkVersion(
             versionCheck = False
 
     logging.info(
-        f'{f"Update required for {appPath.stem}" if versionCheck else f"No update needed for {appPath.stem}"}'
+        f'{f"Update required for {appPath.stem}" if versionCheck is True else f"No update needed for {appPath.stem}"}'
     )
 
     ## Send back a tuple with a boolean of whether or not the update is required, and the currently installed version of the app
