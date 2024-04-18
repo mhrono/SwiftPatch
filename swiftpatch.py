@@ -68,11 +68,9 @@ Use SwiftDialog to prompt users to update their apps
 Version rollback functionality is not yet implemented. Some of the bits are already written, but no testing has been done and rollbacks are not expected to work.
 """
 
-scriptVersion = "1.1.4"
+scriptVersion = "1.1.5"
 requiredDialogVersionString = "2.3.0"
-requiredDialogPattern = (
-    r"^(\d{2,}.*|[3-9].*|2\.\d{2,}.*|2\.[4-9].*|2\.3\.\d{2,}.*|2\.3\.[1-9].*|2\.3\.0.*)$"
-)
+requiredDialogPattern = r"^(\d{2,}.*|[3-9].*|2\.\d{2,}.*|2\.[4-9].*|2\.3\.\d{2,}.*|2\.3\.[1-9].*|2\.3\.0.*)$"
 requiredPythonVersionString = "3.10"
 requiredPythonPattern = (
     r"^(\d{2,}.*|[4-9].*|3\.\d{3,}.*|3\.[2-9]\d{1,}.*|3\.1[1-9].*|3\.10.*)$"
@@ -170,6 +168,14 @@ Minor formatting updates
 
 ---- 1.1.4 | 2024-04-16 ----
 Fix mishandling of empty version regex patterns
+
+---- 1.1.5 | 2024-04-18 ----
+Added imports for new functions
+Update method for retrieving current user data to use native methods
+Added checkDisplaySleep function to determine if all displays are sleeping
+Added checkScreenLocked function to determine if the screen is locked
+Added both new functions to the list of potential interruption reasons in checkInterruptions
+Minor formatting updates
 """
 
 ##########################
@@ -191,6 +197,8 @@ import urllib.parse
 
 from AppKit import NSWorkspace
 from Cocoa import NSRunningApplication
+from Quartz.CoreGraphics import CGGetOnlineDisplayList, CGDisplayIsAsleep
+from SystemConfiguration import SCDynamicStoreCopyConsoleUser
 from datetime import datetime
 from pathlib import Path
 from shutil import disk_usage
@@ -466,12 +474,7 @@ logging.debug(f"Using dialog command file at {str(dialogCommandFile)}")
 logging.debug(f"Today is {dateToday}")
 
 ## Current user username and UID
-userName = subprocess.run(
-    ["/usr/bin/stat", "-f", "%Su", "/dev/console"], capture_output=True, text=True
-).stdout.strip()
-userUID = subprocess.run(
-    ["/usr/bin/stat", "-f", "%u", "/dev/console"], capture_output=True, text=True
-).stdout.strip()
+userName, userUID, _ = SCDynamicStoreCopyConsoleUser(None, None, None)
 logging.debug(f"Current user is {userName} with UID {userUID}")
 
 ## Define an empty reason for forcing an update by default
@@ -1215,11 +1218,62 @@ def checkForPresentation():
     return True if displaySleepAssertions else False
 
 
+## Check if all displays are inactive/asleep
+def checkDisplaySleep():
+
+    _, onlineList, displayCount = CGGetOnlineDisplayList(4, None, None)
+
+    sleepingCount = 0
+
+    for displayID in onlineList:
+        isAsleep = CGDisplayIsAsleep(displayID)
+        logging.debug(f"Display {displayID} asleep: {bool(isAsleep)}")
+        if isAsleep:
+            sleepingCount += 1
+
+    logging.debug(f"{sleepingCount} out of {displayCount} display(s) are asleep")
+
+    return True if sleepingCount == displayCount else False
+
+
+## Check if the screen is locked
+def checkScreenLocked():
+
+    if userName in ["loginwindow", None, ""]:
+        logging.debug("No active console session found")
+        return True
+
+    checkCommand = 'from Quartz.CoreGraphics import CGSessionCopyCurrentDictionary; print(CGSessionCopyCurrentDictionary().get("CGSSessionScreenIsLocked"))'
+    callCommand = [
+        "/bin/launchctl",
+        "asuser",
+        str(userUID),
+        pythonPath,
+        "-c",
+        checkCommand,
+    ]
+
+    result = subprocess.run(callCommand, text=True, capture_output=True)
+
+    isLocked = True if result.stdout == True else False
+
+    logging.debug(f"Screen locked: {isLocked}")
+    return isLocked
+
+
 ## Check for any of the above interruption conditions
 ## Loop every 30 seconds for up to 5 minutes
 def checkInterruptions():
     for i in range(10):
-        interruptCheck = any([checkForDnd(), checkForPresentation(), checkForZoom()])
+        interruptCheck = any(
+            [
+                checkForDnd(),
+                checkForPresentation(),
+                checkForZoom(),
+                checkDisplaySleep(),
+                checkScreenLocked(),
+            ]
+        )
 
         if i == 9 and interruptCheck:
             logging.warning("User still busy after 5 minutes, deferring prompt...")
@@ -1315,7 +1369,7 @@ def getUpdateRequirements():
         x
         for x in profilesDir.iterdir()
         if re.match(
-            f"com\\.appUpdates\\.managedApps\\.{selfService}.*".lower(),
+            f"com\\.appUpdates\\.managedApps\\.{selfService}\\.*".lower(),
             str(x.stem).lower(),
         )
     ]
@@ -2093,7 +2147,9 @@ def run():
             time.sleep(0.5)
             updateDialog("progress: complete")
             if updateResult == "success":
-                updateDialog("message: Update complete!<br><br>This window will be dismissed shortly.")
+                updateDialog(
+                    "message: Update complete!<br><br>This window will be dismissed shortly."
+                )
             else:
                 updateDialog(
                     "message: Something went wrong. Please try again or contact IT support.<br>This window will be dismissed shortly."
