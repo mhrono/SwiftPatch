@@ -68,7 +68,7 @@ Use SwiftDialog to prompt users to update their apps
 Version rollback functionality is not yet implemented. Some of the bits are already written, but no testing has been done and rollbacks are not expected to work.
 """
 
-scriptVersion = "1.1.5"
+scriptVersion = "1.1.6"
 requiredDialogVersionString = "2.3.0"
 requiredDialogPattern = r"^(\d{2,}.*|[3-9].*|2\.\d{2,}.*|2\.[4-9].*|2\.3\.\d{2,}.*|2\.3\.[1-9].*|2\.3\.0.*)$"
 requiredPythonVersionString = "3.10"
@@ -176,6 +176,10 @@ Added checkDisplaySleep function to determine if all displays are sleeping
 Added checkScreenLocked function to determine if the screen is locked
 Added both new functions to the list of potential interruption reasons in checkInterruptions
 Minor formatting updates
+
+---- 1.1.6 | 2024-04-24 ----
+Fixed bug when attempting to check the version of a missing binary
+Fixed TypeError on userUID when attempting to relaunch apps
 """
 
 ##########################
@@ -1289,7 +1293,7 @@ def checkInterruptions():
 ## Verify the app to be updated is running a version other than the latest
 ## If there's a match, no action needs to be taken
 def checkVersion(
-    bid, targetVersion, appVersionKey, appVersionRegex=None, rollbackVersion=False
+    bid, targetVersion, appVersionKey, appVersionRegex=[r"^$"], rollbackVersion=False
 ):
     appPath = getAppPath(bid, appVersionKey)
 
@@ -2160,7 +2164,7 @@ def run():
                 reopenCmd = [
                     "/bin/launchctl",
                     "asuser",
-                    userUID,
+                    str(userUID),
                     "sudo",
                     "-u",
                     userName,
@@ -2261,7 +2265,7 @@ def run():
             reopenCmd = [
                 "/bin/launchctl",
                 "asuser",
-                userUID,
+                str(userUID),
                 "sudo",
                 "-u",
                 userName,
