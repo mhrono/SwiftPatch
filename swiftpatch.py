@@ -68,7 +68,7 @@ Use SwiftDialog to prompt users to update their apps
 Version rollback functionality is not yet implemented. Some of the bits are already written, but no testing has been done and rollbacks are not expected to work.
 """
 
-scriptVersion = "1.1.6"
+scriptVersion = "1.1.7"
 requiredDialogVersionString = "2.3.0"
 requiredDialogPattern = r"^(\d{2,}.*|[3-9].*|2\.\d{2,}.*|2\.[4-9].*|2\.3\.\d{2,}.*|2\.3\.[1-9].*|2\.3\.0.*)$"
 requiredPythonVersionString = "3.10"
@@ -180,6 +180,10 @@ Minor formatting updates
 ---- 1.1.6 | 2024-04-24 ----
 Fixed bug when attempting to check the version of a missing binary
 Fixed TypeError on userUID when attempting to relaunch apps
+
+---- 1.1.7 | 2024-05-13 ----
+Fixed bug causing a failure when a policy executes a script prior to package download
+Added a timeout to recon submission
 """
 
 ##########################
@@ -1551,7 +1555,7 @@ def getUpdateRequirements():
 def runRecon():
     logging.info("Running recon...")
     cmd = ["/usr/local/bin/jamf", "recon"]
-    subprocess.run(cmd, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    subprocess.run(cmd, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, timeout=90)
 
 
 ## Receive stdout from a policy run and update the dialog command file as the policy executes
@@ -1569,12 +1573,22 @@ def monitorPolicyRun(logStream, appName):
 
     while True:
         for logData in logStream.stdout:
+
+            pendingPatterns = [
+                re.compile(r"^Executing Policy .*Install Latest.*$", re.IGNORECASE),
+                re.compile(r"^Running script.*$", re.IGNORECASE),
+                re.compile(r"^Script exit code.*$", re.IGNORECASE),
+                re.compile(r"^Script result.*$", re.IGNORECASE),
+                re.compile(r"^(?!Downloading|Resuming download of).*$", re.IGNORECASE),
+                re.compile(r"^$", re.IGNORECASE)
+            ]
+
             if re.match("^Checking for policies triggered by.*$", logData):
                 logging.debug(logData)
                 updateDialog("overlayicon: SF=icloud.and.arrow.down,palette=auto")
-                updateStatus("pending", "Download pending...", listIndex)
+                updateStatus("pending", "Starting...", listIndex)
 
-            elif re.match("^Executing Policy Install Latest.*$", logData):
+            elif any(re.match(pattern, logData) for pattern in pendingPatterns) and "pkgName" not in locals():
                 logging.debug(logData)
                 updateStatus("progress: 100", "Download pending...", listIndex)
 
