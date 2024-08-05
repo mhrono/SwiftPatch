@@ -68,12 +68,12 @@ Use SwiftDialog to prompt users to update their apps
 Version rollback functionality is not yet implemented. Some of the bits are already written, but no testing has been done and rollbacks are not expected to work.
 """
 
-scriptVersion = "1.1.7"
-requiredDialogVersionString = "2.3.0"
-requiredDialogPattern = r"^(\d{2,}.*|[3-9].*|2\.\d{2,}.*|2\.[4-9].*|2\.3\.\d{2,}.*|2\.3\.[1-9].*|2\.3\.0.*)$"
-requiredPythonVersionString = "3.10"
+scriptVersion = "1.2.0"
+requiredDialogVersionString = "2.5.0"
+requiredDialogPattern = r"^(\d{2,}.*|[3-9].*|2\.\d{2,}.*|2\.[6-9].*|2\.5\.\d{2,}.*|2\.5\.[1-9].*|2\.5\.0.*)$"
+requiredPythonVersionString = "3.12"
 requiredPythonPattern = (
-    r"^(\d{2,}.*|[4-9].*|3\.\d{3,}.*|3\.[2-9]\d{1,}.*|3\.1[1-9].*|3\.10.*)$"
+    r"^(\d{2,}.*|[4-9].*|3\.\d{3,}.*|3\.[2-9]\d{1,}.*|3\.1[3-9].*|3\.12.*)$"
 )
 """
 CHANGELOG:
@@ -90,27 +90,27 @@ Change macOS installed version logic to account for new major releases
 Add import for urllib.parse
 Adjust pkgName variable assignment in monitorPolicyRun to account for HTML-encoded spaces in filenames
 
----- 1.0 | 2023-10-05 ----
+---- 1.0     | 2023-10-05 ----
 First public release!
 
----- 1.0.1 | 2023-10-13 ----
+---- 1.0.1   | 2023-10-13 ----
 Move run receipt update above inventory update in cleanup
 
----- 1.0.2 | 2023-10-18 ----
+---- 1.0.2   | 2023-10-18 ----
 Remove unneeded warning logging for silent status update attempts
 Fix path presence checking in getBinaryVersion
 Added some error handling to getBinaryVersion
 Fixed force tagging logic for silent updates
 
----- 1.0.3 | 2023-10-23 ----
+---- 1.0.3   | 2023-10-23 ----
 Added step to unload existing LaunchDaemons before loading new ones
 Changed run time in receipt to use UTC instead of device local time
 Added RunAtLoad to setup LaunchDaemons
 
----- 1.0.4 | 2023-10-24 ----
+---- 1.0.4   | 2023-10-24 ----
 Fixed issue with last run receipt checking
 
----- 1.1.0 | 2023-11-06 ----
+---- 1.1.0   | 2023-11-06 ----
 POTENTIALLY BREAKING CHANGES
 ----------------------------
 Setting preferences via configuration profile is now possible using the com.github.swiftpatch domain
@@ -144,14 +144,14 @@ Added logic in 'run' to process 'selfservice' executions
 Fixed lazy deferral checking in 'parseUserSelections' to only check app keys in 'promptOutput'
 Other minor fixes throughout
 
----- 1.1.1 | 2023-11-13 ----
+---- 1.1.1   | 2023-11-13 ----
 Fixed and reformatted arguments and prefsData processing (thanks @erchn!)
 Fixed processing of --selfservice argument in multiple places
 Removed a placeholder comment
 Updated formatting with Black for improved readability (also thanks to @erchn)
 Removed backticks from 1.1.0 release notes--look great on GitHub, behave rudely when writing this script to disk from a shell script
 
----- 1.1.2 | 2024-01-19 ----
+---- 1.1.2   | 2024-01-19 ----
 Fixed missing logging of preference detection
 Fixed bug with preference loading when a configuration profile and preferences file are present
 Added functionality to removeDaemons to accept and remove a single daemon by path
@@ -159,17 +159,17 @@ Added missing silent argument to preferences file creation in setPrefsFile
 Updated setDeferral and setupRunSchedule functions to handle daemon creation using configuration profile preferences
 Updated setupRunSchedule to remove existing daemons if present
 
----- 1.1.3 | 2024-04-15 ----
+---- 1.1.3   | 2024-04-15 ----
 Fixed some syntax warnings with regex patterns by marking them as raw strings
 Updated download-tracking refresh timing and added percentage display
 Updated progress bar behavior to better match reality
 Updated messaging for completed Self Service updates
 Minor formatting updates
 
----- 1.1.4 | 2024-04-16 ----
+---- 1.1.4   | 2024-04-16 ----
 Fix mishandling of empty version regex patterns
 
----- 1.1.5 | 2024-04-18 ----
+---- 1.1.5   | 2024-04-18 ----
 Added imports for new functions
 Update method for retrieving current user data to use native methods
 Added checkDisplaySleep function to determine if all displays are sleeping
@@ -177,13 +177,51 @@ Added checkScreenLocked function to determine if the screen is locked
 Added both new functions to the list of potential interruption reasons in checkInterruptions
 Minor formatting updates
 
----- 1.1.6 | 2024-04-24 ----
+---- 1.1.6   | 2024-04-24 ----
 Fixed bug when attempting to check the version of a missing binary
 Fixed TypeError on userUID when attempting to relaunch apps
 
----- 1.1.7 | 2024-05-13 ----
+---- 1.1.7   | 2024-05-13 ----
 Fixed bug causing a failure when a policy executes a script prior to package download
 Added a timeout to recon submission
+
+---- 1.1.8   | 2024-05-17 ----
+Fixed bug when attempting to update an app that is no longer installed
+Added call to checkInstallDate, which was unintentionally not referenced
+Added logging output for current script version
+
+---- 1.1.9   | 2024-05-21 ----
+Added forced update support to --selfservice
+
+---- 1.1.10  | 2024-05-22 ----
+Fixed missing argument when calling checkInstallDate
+Fixed updates not being forced if no deferrals remain
+Added user-facing details to the --selfservice prompt when an update is forced
+Fixed forced --selfservice updates not being forced under certain conditions
+
+---- 1.1.11  | 2024-05-22 ----
+Fixed bug unintentionally showing infobutton
+
+---- 1.1.12  | 2024-05-23 ----
+Updated required swiftDialog version to 2.3.3
+Changed online macOS versioning source from Apple catalog to SOFA (https://sofa.macadmins.io)
+Updated macOS version validation regex for some futureproofing
+Added additional dialog overlay icons during update processing for improved UX
+Changed boolean dialog options from 0/1 integers to True/False
+Minor formatting updates
+
+---- 1.1.13  | 2024-06-24 ----
+Updated required swiftDialog version to 2.5.0
+Updated required python version to 3.12
+Added a download for portable swiftDialog installation if not installed on the system
+
+---- 1.2.0   | 2024-07-24 ----
+Renamed validateRunTiming function to validateRunInterval
+Added validateRunTiming function to only create non-forced prompts at the beginning or end of a business day, or on weekends
+Fixed incorrect timestamp marking in writeRunReceipt
+Removed ontop argument from dialog windows
+Added "defer" to possible item run results, replacing "none" if an app was deferred
+Added additional call to writeRunReceipt if the timer expires or dialog is killed
 """
 
 ##########################
@@ -191,6 +229,7 @@ Added a timeout to recon submission
 ##########################
 
 import argparse
+import hashlib
 import json
 import logging
 import platform
@@ -472,6 +511,9 @@ logger.addHandler(logToConsole)
 
 ###############################
 
+## Log the script version
+logging.info(f"swiftPatch version {scriptVersion}")
+
 ## Generate a randomized temporary file to use for dialog commands
 dialogCommandFile = Path(
     NamedTemporaryFile(prefix="dialogCommand-", suffix=".log").name
@@ -536,6 +578,39 @@ forcePrompt = False
 ###############################
 
 
+## If the required swiftDialog version is not installed,
+## or swiftDialog is not installed at all,
+## download a portable copy to use for this run
+def downloadDialog():
+
+    portableDialogUrl = "https://github.com/swiftDialog/swiftDialog/releases/download/v2.5.0/swiftDialog.dmg"
+    portableDialogHash = (
+        "6cf5e7202dfc07dcfe6a198d0815146738da5fe3c54217978ad383721ec0ea71"
+    )
+
+    logging.warning(
+        "A permanent swiftDialog installation was not found or not up to date, downloading a portable build for this run..."
+    )
+
+    dialogDownloadPath = Path("/private/tmp/dialog.pkg")
+
+    with open(dialogDownloadPath, "wb") as pkg:
+        pkg.write(requests.get(portableDialogUrl, allow_redirects=True).content)
+
+    with open(dialogDownloadPath, "rb") as pkg:
+        pkgHash = hashlib.file_digest(pkg, "sha256").hexdigest()
+
+    if portableDialogHash == pkgHash:
+
+        installerCmd = [
+            "/usr/sbin/installer",
+            "-pkg",
+            str(dialogDownloadPath),
+            "-target",
+            "/",
+        ]
+
+
 def requirementsCheck():
     requirementsMet = True
 
@@ -547,15 +622,15 @@ def requirementsCheck():
         logging.debug(f"Using dialog version {dialogVersion} at {dialogPath}")
 
         if not re.match(requiredDialogPattern, dialogVersion):
-            logging.critical(
+            logging.warning(
                 f"Dialog version {dialogVersion} does not meet minimum {requiredDialogVersionString}!"
             )
-            requirementsMet = False
+            downloadDialog()
     else:
-        logging.critical(
+        logging.warning(
             "Dialog binary was not found. Check your installation and/or specified path!"
         )
-        requirementsMet = False
+        downloadDialog()
 
     ## Jamf binary present and server available
     if Path("/usr/local/bin/jamf").exists():
@@ -760,30 +835,38 @@ def getOSVersionData():
             )
 
     else:
-        logging.debug("Fetching latest macOS version from Apple catalog")
+        logging.debug("Fetching latest macOS version from SOFA feed")
 
-        catalogURL = "https://gdmf.apple.com/v2/pmv"
-        catalogData = requests.get(catalogURL, verify=False)
+        catalogURL = "https://sofa.macadmins.io/v1/macos_data_feed.json"
+        catalogData = requests.get(catalogURL)
 
         try:
             catalog = json.loads(catalogData.text)
+            catalogUpdatedDate = catalogData.headers.get("Last-Modified")
+            logging.info(
+                f"Successfully retrieved macOS data from SOFA feed, last updated {catalogUpdatedDate}"
+            )
         except:
             logging.error("Something went wrong loading Apple catalog data")
             upToDate = False
 
-        latestVersion = sorted(
-            catalog.get("PublicAssetSets").get("macOS"),
-            key=lambda x: x.get("ProductVersion"),
-            reverse=True,
-        )[0].get("ProductVersion")
+        latestVersion = (
+            sorted(
+                catalog.get("OSVersions"),
+                key=lambda x: x.get("Latest").get("ProductVersion"),
+                reverse=True,
+            )[0]
+            .get("Latest")
+            .get("ProductVersion")
+        )
 
-        if not re.match(r"\d{2}\.\d\.\d", latestVersion):
+        if not re.match(r"^\d{2}\.\d{1,2}(?>\.\d{1,2})?$", latestVersion):
             logging.warning(
                 "Latest version from Apple catalog does not match expected semantic versioning pattern!"
             )
             upToDate = False
 
-        logging.info(f"Latest macOS version from Apple is {latestVersion}")
+        logging.info(f"Latest macOS version from SOFA is {latestVersion}")
 
     ## If version strings are equal OR the installed major version is greater than the latest required/available major version, consider macOS up to date
     if macOSInstalledVer == latestVersion or int(macOSInstalledVer.split(".")[0]) > int(
@@ -836,8 +919,11 @@ _A message from {orgName} IT_ {getEmoji('greenHeart')}"
 
 ## Read the app's creation date and compare it to the current date
 ## If more than 60 days have passed since the last update, force the update now
-def checkInstallDate(bid):
-    appPath = getAppPath(bid)
+def checkInstallDate(bid, versionKey):
+    appPath = getAppPath(bid, versionKey)
+
+    if not appPath:
+        return True
 
     appLastInstalled = datetime.fromtimestamp(appPath.stat().st_birthtime).date()
     installDelta = dateToday - appLastInstalled
@@ -857,8 +943,8 @@ def checkInstallDate(bid):
 
 
 ## Make sure we're not running too frequently or too soon after the last run
-def validateRunTiming():
-    logging.info("Validating run timing...")
+def validateRunInterval():
+    logging.info("Validating run interval...")
 
     ## If running from a deferral LaunchDaemon, the run is valid and no checks need to be done
     if deferredRun:
@@ -876,6 +962,7 @@ def validateRunTiming():
         )
 
         runDelta = timeNow - lastRunTime
+        logging.debug(f"Last run time was {lastRunTime}")
         logging.debug(f"Update script was last run {runDelta} seconds ago")
     else:
         logging.info("Run is valid: no run receipt found")
@@ -895,6 +982,42 @@ def validateRunTiming():
     else:
         logging.info("Run is valid: acceptable interval since last run")
         return True
+
+
+## Only prompt at the beginning or end of the user's (extended) workday (7-10a / 3-8p local time)
+def validateRunTiming(runIntervalValid):
+
+    if not runIntervalValid:
+        logging.debug("Run interval check failed, skipping run timing check")
+        return False
+
+    logging.info("Validating run timing...")
+
+    currentHour = int(datetime.strftime(datetime.today(), "%H"))
+    currentDay = int(datetime.strftime(datetime.today(), "%w"))
+
+    logging.debug(f"Current hour is {currentHour} on weekday {currentDay}")
+
+    if currentHour in list(range(7, 10)) + list(range(15, 20)):
+        logging.info(
+            "Running at the beginning or end of the user's business day, continuing..."
+        )
+        validTime = True
+
+    elif currentDay in [0, 6]:
+        logging.info("Continuing with weekend run...")
+        validTime = True
+
+    elif currentHour in list(range(10, 15)):
+        logging.info("Skipping mid-day run and trying again in an hour...")
+        setDeferral(2)
+        validTime = False
+
+    else:
+        logging.info("Running outside business hours, skipping...")
+        validTime = False
+
+    return validTime
 
 
 ## Write out a json file with details of the last run
@@ -918,7 +1041,7 @@ def writeRunReceipt():
 
     runData = {
         "silent" if silentRun else "prompt": {
-            "runTime": int(time.mktime(time.gmtime())),
+            "runTime": int(time.time()),
             "runResult": runResult,
         }
     }
@@ -948,12 +1071,16 @@ def checkIfRunning(bid):
 ## Return the path of an application from its bundle ID
 def getAppPath(bid, versionKey=None):
     if versionKey in ["CFBundleVersion", "CFBundleShortVersionString"]:
-        path = Path(
-            NSWorkspace.sharedWorkspace()
-            .URLForApplicationWithBundleIdentifier_(bid)
-            .path()
-        )
-        logging.debug(f"{bid} found at {path}")
+        try:
+            path = Path(
+                NSWorkspace.sharedWorkspace()
+                .URLForApplicationWithBundleIdentifier_(bid)
+                .path()
+            )
+            logging.debug(f"{bid} found at {path}")
+        except AttributeError:
+            logging.error(f"No installed app found for bundle identifier {bid}!")
+
     else:
         path = Path(versionKey)
         logging.debug(f"{bid} path set to {path} as a binary file")
@@ -1301,6 +1428,10 @@ def checkVersion(
 ):
     appPath = getAppPath(bid, appVersionKey)
 
+    ## If the app isn't installed, skip the update attempt
+    if not appPath:
+        return False, targetVersion
+
     ## If we're dealing with an actual app, appVersionKey will be one of the version keys from its Info.plist
     if appVersionKey in ["CFBundleVersion", "CFBundleShortVersionString"]:
         appInfoPlist = appPath.joinpath("Contents/Info.plist")
@@ -1418,7 +1549,7 @@ def getUpdateRequirements():
 
         logging.info(f"Processing update data for {appDisplayName}...")
 
-        if appForceUpdate:
+        if appForceUpdate or not checkInstallDate(appBundleID, appVersionKey):
             logging.warning(f"{appDisplayName} will be force updated")
             forceReason = "Urgent security patch"
             forcePrompt = True
@@ -1454,6 +1585,9 @@ def getUpdateRequirements():
 
             appPath = getAppPath(appBundleID, appVersionKey)
 
+            if not appPath:
+                continue
+
             deferralsRemain, deferralsUsed = checkDeferralCount(
                 appDisplayName, appDeferLimit
             )
@@ -1461,6 +1595,8 @@ def getUpdateRequirements():
             if not deferralsRemain:
                 logging.info(f"All deferrals used for {appDisplayName}")
                 forceReason = "No deferrals remaining"
+                forcePrompt = True
+                deferralPermitted = False
 
             if appForceUpdate:
                 switchDisabled = True
@@ -1555,7 +1691,9 @@ def getUpdateRequirements():
 def runRecon():
     logging.info("Running recon...")
     cmd = ["/usr/local/bin/jamf", "recon"]
-    subprocess.run(cmd, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, timeout=90)
+    subprocess.run(
+        cmd, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, timeout=90
+    )
 
 
 ## Receive stdout from a policy run and update the dialog command file as the policy executes
@@ -1580,15 +1718,20 @@ def monitorPolicyRun(logStream, appName):
                 re.compile(r"^Script exit code.*$", re.IGNORECASE),
                 re.compile(r"^Script result.*$", re.IGNORECASE),
                 re.compile(r"^(?!Downloading|Resuming download of).*$", re.IGNORECASE),
-                re.compile(r"^$", re.IGNORECASE)
+                re.compile(r"^$", re.IGNORECASE),
             ]
 
             if re.match("^Checking for policies triggered by.*$", logData):
                 logging.debug(logData)
-                updateDialog("overlayicon: SF=icloud.and.arrow.down,palette=auto")
+                updateDialog(
+                    "overlayicon: SF=command.circle,palette=auto,animation=pulse.bylayer"
+                )
                 updateStatus("pending", "Starting...", listIndex)
 
-            elif any(re.match(pattern, logData) for pattern in pendingPatterns) and "pkgName" not in locals():
+            elif (
+                any(re.match(pattern, logData) for pattern in pendingPatterns)
+                and "pkgName" not in locals()
+            ):
                 logging.debug(logData)
                 updateStatus("progress: 100", "Download pending...", listIndex)
 
@@ -1596,6 +1739,9 @@ def monitorPolicyRun(logStream, appName):
                 "^Resuming download of.*$", logData
             ):
                 logging.debug(logData)
+                updateDialog(
+                    "overlayicon: SF=arrowshape.down.circle.fill,palette=auto,animation=pulse.bylayer"
+                )
                 pkgName = urllib.parse.unquote(
                     logData.rsplit("/", 1)[-1].split("...", 1)[0].split(" ", 1)[-1]
                 )
@@ -1621,10 +1767,14 @@ def monitorPolicyRun(logStream, appName):
                     time.sleep(0.05)
                 else:
                     updateStatus("wait", "Validating download...", listIndex)
+                    updateDialog(
+                        "overlayicon: SF=pencil.and.list.clipboard,palette=auto"
+                    )
 
             elif re.match("^Verifying package integrity.*$", logData):
                 logging.debug(logData)
                 updateStatus("wait", "Validating download...", listIndex)
+                updateDialog("overlayicon: SF=pencil.and.list.clipboard,palette=auto")
 
             elif re.match("^Installing.*$", logData):
                 logging.debug(logData)
@@ -1715,15 +1865,14 @@ Apps to be _updated now_ will look like this:   ![toggleOn](https://i.imgur.com/
         "messagefont": "size=14",
         "messageposition": "top",
         "position": position,
-        "button1text": "Update Apps",
-        "button1disabled": "True",
+        "button1text": "Update Selected",
+        "button1disabled": False,
         "timer": "300",
-        "infobutton": 0,
-        "quitoninfo": 0,
-        "ontop": 1,
-        "moveable": 1,
+        "infobutton": False,
+        "quitoninfo": False,
+        "moveable": False,
         "quitkey": "i",
-        "json": 1,
+        "json": True,
         "checkboxstyle": {"style": "switch", "size": "small"},
         "checkbox": dialogPromptList["checkbox"],
     }
@@ -1732,7 +1881,7 @@ Apps to be _updated now_ will look like this:   ![toggleOn](https://i.imgur.com/
         modeConfig = {
             "message": "**App to be Quit and Updated                                                              Update Now?**",
             "messagealignment": "center",
-            "hideicon": 1,
+            "hideicon": True,
             "width": "550",
         }
 
@@ -1745,7 +1894,7 @@ Apps to be _updated now_ will look like this:   ![toggleOn](https://i.imgur.com/
             "icon": str(iconPath),
             "iconsize": "120",
             "infobox": infoboxData,
-            "hideicon": 0,
+            "hideicon": False,
             "height": "625",
         }
 
@@ -1759,7 +1908,7 @@ Apps to be _updated now_ will look like this:   ![toggleOn](https://i.imgur.com/
             "selectitems": [
                 {
                     "title": "Defer Unselected Apps:",
-                    "required": "False",
+                    "required": False,
                     "values": ["5 minutes", "15 minutes", "1 hour", "3 hours", "1 day"],
                 }
             ]
@@ -1865,9 +2014,9 @@ def parseUserSelections(promptOutput):
         "messageposition": "top",
         "position": position,
         "button1text": "OK",
-        "infobutton": 0,
-        "quitoninfo": 0,
-        "moveable": 1,
+        "infobutton": False,
+        "quitoninfo": False,
+        "moveable": True,
         "quitkey": "i",
         "listitem": dialogProgressList["listItem"],
     }
@@ -1876,7 +2025,7 @@ def parseUserSelections(promptOutput):
         modeConfig = {
             "message": "**App to be Quit and Updated                                                            Update Status**",
             "messagealignment": "center",
-            "hideicon": 1,
+            "hideicon": True,
             "width": "550",
         }
 
@@ -1889,7 +2038,7 @@ def parseUserSelections(promptOutput):
             "icon": str(iconPath),
             "iconsize": "120",
             "infobox": infoboxData,
-            "hideicon": 0,
+            "hideicon": False,
             "height": "650",
         }
 
@@ -2109,18 +2258,21 @@ def run():
         appName = list(appListEntries.keys())[0]
         bundleID = appData["bundleID"]
         backgroundUpdate = appData["background"]
+        forceUpdate = appData["force"]
 
         dialogConfig = {
             "title": "none",
             "icon": promptList[0]["icon"],
-            "message": f'{list(appListEntries.keys())[0]} will be {"quit and " if not backgroundUpdate else ""}updated in 30 seconds.<br>You may click Cancel to stop the update.',
+            "message": f'{list(appListEntries.keys())[0]} will be {"quit and " if not backgroundUpdate else ""}updated in 30 seconds.{"<br>You may click Cancel to stop the update." if not forceUpdate else "<br>Installation of this update is required immediately."}',
             "mini": True,
             "timer": "30",
             "position": position,
             "button1text": "Update Now",
             "button1disabled": True,
-            "button2text": "Cancel",
         }
+
+        if not forceUpdate:
+            dialogConfig.update({"button2text": "Cancel"})
 
         promptJson = "/var/tmp/selfserviceprompt.json"
 
@@ -2132,11 +2284,12 @@ def run():
         logging.debug(f"Prompt dialog configuration: {loadJson(Path(promptJson))}")
         prompt = subprocess.run(dialogCmd, text=True, capture_output=True)
 
-        if prompt.returncode == 0:
+        if prompt.returncode == 0 or forceUpdate:
             logging.info("Self Service update accepted")
 
             for key in ["timer", "button1text", "button1disabled", "button2text"]:
-                dialogConfig.pop(key)
+                if key in dialogConfig.keys():
+                    dialogConfig.pop(key)
 
             statusKeys = {
                 "progress": 100,
@@ -2215,12 +2368,14 @@ def run():
 
     ## If the user is in a Zoom meeting, presenting in an app, or has Focus/DND enabled, defer for a random 5-15 minute interval and exit
     if checkInterruptions() and not forcePrompt:
+        for app in appListEntries.keys():
+            appListEntries[app].update({"result": "defer"})
         setDeferral(None)
         time.sleep(2)
         endRun(0, "info", "Interruption check failed after 5 minutes, deferring...")
 
-    ## If the timing of this run is otherwise invalid (see validateRunTiming for details), exit
-    if not validateRunTiming() and not forcePrompt:
+    ## If the timing of this run is otherwise invalid (see validateRunInterval and validateRunTiming for details), exit
+    if not any([validateRunTiming(validateRunInterval()), forcePrompt]):
         endRun(
             0,
             "warning",
@@ -2245,8 +2400,11 @@ def run():
                 logging.info(f"Updating {app} anyway...")
                 quitApp(appData["bundleID"])
                 runJamfPolicy(app)
+            else:
+                appListEntries[app].update({"result": "defer"})
 
         setDeferral(None)
+        writeRunReceipt()
         runRecon()
         time.sleep(2)
         endRun(0, "info", "Set randomized deferral for running apps.")
